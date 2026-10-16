@@ -8,7 +8,7 @@ window.onerror=function(m){document.getElementById('err').textContent+='ERR:'+m+
 // ===== CONFIG-driven core module (reusable as a mini-game) =====
 const CONFIG={
   tile:48, cols:15, rows:21,
-  player:{speed:150,hp:100,radius:14,attackArc:1.6,startMelee:'flashlight'},
+  player:{speed:150,hp:100,hurtInvuln:.9,radius:14,attackArc:1.6,startMelee:'flashlight'},
   // melee weapons: reach (px), dmg, cooldown (s). Start = just a guy with a flashlight.
   melee:{flashlight:{name:'Flashlight',range:30,dmg:24,cd:.32,color:'#bbb',len:18},
     shovel:{name:'Shovel',range:66,dmg:36,cd:.5,color:'#9aa',len:44},
@@ -37,9 +37,13 @@ const CONFIG={
   // speech bubbles: weighted lines, 1 on screen max, global cooldown, only some tweakers talk
   bubbles:{talkerChance:.35,cooldownMin:6,cooldownMax:10,show:2.2,firstDelay:4},
   quoteWeights:{"Don't bid on my unit!":1,"That's not my pipe!":.13,'Got any rocks?':.13},
+  // v8: waves must be EARNED. Clear = KO points >= ko AND units opened >= units. Timer running out = LOCKDOWN (harder), not a win.
+  objectives:{koBase:16,koPerWave:6,unitsBase:2,unitsPerWave:1,unitsMax:6,koWorth:{roach:.5,rat:1,tweaker:3}},
+  lockdown:{spawnMul:.55,extraTweakers:2,extraAlive:4,escalateEvery:20,maxLevel:3}, // per level: spawn interval x spawnMul, + caps
+  hunt:{flowEvery:.25,chaseRadius:170,chaseBoost:1.35,kiteTime:12,kiteRamp:.03,kiteMax:.45}, // tweakers path around blocks; critters sprint when near; no-KO streak speeds everyone up
   guaranteeGunByWave:2, // if no nail gun found by start of this wave, first unit opened drops it
   facilities:[
-    {name:'Lucky Lock Storage',waveTime:40,spawnEvery:3,mix:{tweaker:.45,rat:.3,roach:.25},units:11,dmgMul:.4,hpMul:.75,maxTweakers:3,maxAlive:6,startTweakers:1},
+    {name:'Lucky Lock Storage',waveTime:40,spawnEvery:3,mix:{tweaker:.45,rat:.3,roach:.25},units:11,dmgMul:.15,hpMul:.75,maxTweakers:3,maxAlive:6,startTweakers:1,ko:24,unitsReq:3},
     {name:'Bargain Bin Self-Store',waveTime:55,spawnEvery:1.6,mix:{tweaker:.55,rat:.25,roach:.2},units:12,dmgMul:.85,maxTweakers:4,maxAlive:9},
     {name:'Shady Pines U-Stor',waveTime:60,spawnEvery:1.15,mix:{tweaker:.6,rat:.22,roach:.18},units:12,maxTweakers:5,maxAlive:11},
     {name:'Midnight Mega Storage',waveTime:70,spawnEvery:.9,mix:{tweaker:.6,rat:.2,roach:.2},units:14,maxTweakers:6,maxAlive:13}
@@ -83,9 +87,17 @@ const StorageSurvival=(function(){
     return {walls,units:units.slice(0,f.units),W:C*T,H:R*T};
   }
   function newGame(){S={fi:0,score:0,cash:0,hp:CONFIG.player.hp,maxHp:CONFIG.player.hp,supplies:0,ammo:0,melee:CONFIG.player.startMelee,throwType:Object.keys(CONFIG.startThrowables)[0]||null,inv:Object.assign({},CONFIG.startThrowables)};startFacility();}
-  function startFacility(){const m=buildMap(S.fi);Object.assign(S,m,{f:facility(S.fi),t:0,spawnT:0,enemies:[],pickups:[],fx:[],bullets:[],
-    p:{x:7*CONFIG.tile+24,y:CONFIG.rows*CONFIG.tile/2,dir:0,cd:0,scd:0,tcd:0,swing:0,hurt:0,flash:0},state:'play'});S.bubbleCd=CONFIG.bubbles.firstDelay;S.gunCheck=S.fi+1>=CONFIG.guaranteeGunByWave&&!S.gotGun;S.spawned=S.spawned||{};S.maxAliveSeen=S.maxAliveSeen||{};
+  function startFacility(){const m=buildMap(S.fi);Object.assign(S,m,{f:Object.assign({},facility(S.fi)),t:0,spawnT:0,enemies:[],pickups:[],fx:[],bullets:[],
+    ko:0,uo:0,lock:0,lockT:0,noKO:0,flow:null,flowT:0,quota:quotaFor(S.fi),p:{x:7*CONFIG.tile+24,y:CONFIG.rows*CONFIG.tile/2,dir:0,cd:0,scd:0,tcd:0,swing:0,hurt:0,flash:0},state:'play'});S.bubbleCd=CONFIG.bubbles.firstDelay;S.gunCheck=S.fi+1>=CONFIG.guaranteeGunByWave&&!S.gotGun;S.spawned=S.spawned||{};S.maxAliveSeen=S.maxAliveSeen||{};
     const st=S.f.startTweakers!=null?S.f.startTweakers:CONFIG.startTweakers;for(let i=0;i<st;i++)spawn('tweaker',true);}
+  function quotaFor(fi){const O=CONFIG.objectives,f=facility(fi);return {ko:f.ko||O.koBase+O.koPerWave*fi,units:f.unitsReq!=null?f.unitsReq:Math.min(O.unitsMax,O.unitsBase+O.unitsPerWave*fi)};}
+  function cellOf(x,y){const T=CONFIG.tile;return [Math.max(0,Math.min(CONFIG.cols-1,Math.floor(x/T))),Math.max(0,Math.min(CONFIG.rows-1,Math.floor(y/T)))];}
+  function buildFlow(){const C=CONFIG.cols,Rr=CONFIG.rows,T=CONFIG.tile;if(!S.block){S.block=new Uint8Array(C*Rr);for(const w of S.walls)for(let y=Math.floor(w.y/T);y<Math.ceil((w.y+w.h)/T);y++)for(let x=Math.floor(w.x/T);x<Math.ceil((w.x+w.w)/T);x++)if(x>=0&&y>=0&&x<C&&y<Rr)S.block[y*C+x]=1;}
+    const d=new Int16Array(C*Rr).fill(-1),q=[];const [px,py]=cellOf(S.p.x,S.p.y);d[py*C+px]=0;q.push(px,py);
+    for(let i=0;i<q.length;i+=2){const x=q[i],y=q[i+1],v=d[y*C+x];for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=C||ny>=Rr)continue;const k=ny*C+nx;if(d[k]>=0||S.block[k])continue;d[k]=v+1;q.push(nx,ny);}}S.flow=d;}
+  function steer(e,dx,dy,d){const C=CONFIG.cols,T=CONFIG.tile;if(!S.flow||d<T*1.2)return [dx/d,dy/d];const [cx,cy]=cellOf(e.x,e.y);const here=S.flow[cy*C+cx];if(here<0)return [dx/d,dy/d];
+    let best=null,bv=here;for(const [ox,oy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=cx+ox,ny=cy+oy;if(nx<0||ny<0||nx>=C||ny>=CONFIG.rows)continue;const v=S.flow[ny*C+nx];if(v>=0&&v<bv){bv=v;best=[nx,ny];}}
+    if(!best)return [dx/d,dy/d];const tx=(best[0]+.5)*T-e.x,ty=(best[1]+.5)*T-e.y,l=Math.hypot(tx,ty)||1;return [tx/l*.8+dx/d*.2,ty/l*.8+dy/d*.2];}
   function collide(o,r){for(const w of S.walls){const cx=Math.max(w.x,Math.min(o.x,w.x+w.w)),cy=Math.max(w.y,Math.min(o.y,w.y+w.h));
     const dx=o.x-cx,dy=o.y-cy,d=Math.hypot(dx,dy);if(d<r){if(d===0){o.y+=r;continue}o.x+=dx/d*(r-d);o.y+=dy/d*(r-d);}}
     o.x=Math.max(r,Math.min(S.W-r,o.x));o.y=Math.max(r,Math.min(S.H-r,o.y));}
@@ -103,7 +115,7 @@ const StorageSurvival=(function(){
         junk:CONFIG.tweakerJunk[Math.floor(Math.random()*CONFIG.tweakerJunk.length)],say:'',sayT:rnd(1,5),talker:Math.random()<CONFIG.bubbles.talkerChance,hair:Math.random()*6});}
       o.hp=o.maxHp=e.hp*o.hm*(S.f.hpMul||1);S.enemies.push(o);}const ty={};for(const q of S.enemies)ty[q.type]=(ty[q.type]||0)+1;ty.all=S.enemies.length;for(const k in ty)S.maxAliveSeen[k]=Math.max(S.maxAliveSeen[k]||0,ty[k]);}
   function pickQuote(){const Q={};for(const q of CONFIG.tweakerQuotes)Q[q]=1;Object.assign(Q,CONFIG.quoteWeights);let t=0;for(const k in Q)t+=Q[k];let r=Math.random()*t;for(const k in Q){r-=Q[k];if(r<=0)return k}return CONFIG.tweakerQuotes[0];}
-  function openUnit(u){if(window.FIGHT)FIGHT.onUnit(S,u);u.open=true;u.oT=performance.now();let r=Math.random(),L=CONFIG.loot[0];for(const l of CONFIG.loot){r-=l.w;if(r<=0){L=l;break}}
+  function openUnit(u){S.uo++;if(window.FIGHT)FIGHT.onUnit(S,u);u.open=true;u.oT=performance.now();let r=Math.random(),L=CONFIG.loot[0];for(const l of CONFIG.loot){r-=l.w;if(r<=0){L=l;break}}
     if(S.gunCheck&&!S.gotGun)L=CONFIG.loot.find(l=>l.type=='gun');S.gunCheck=false;if(L.type=='gun')S.gotGun=true;
     let sub=null;if(L.type=='throw'){let q=Math.random();for(const k in CONFIG.throwables){q-=CONFIG.throwables[k].w;if(q<=0){sub=k;break}}sub=sub||'padlock';}
     if(L.type=='melee'){const ks=Object.keys(CONFIG.melee).filter(k=>k!='flashlight'&&k!=S.melee);sub=ks[Math.floor(Math.random()*ks.length)];}
@@ -132,15 +144,18 @@ const StorageSurvival=(function(){
     collide(p,P.radius);p.cd-=dt;p.swing-=dt;p.hurt-=dt;if(input.attack)attack();p.scd-=dt;p.flash-=dt;if(input.shoot)shoot();p.tcd-=dt;if(input.throw)doThrow();
     S.bullets=S.bullets.filter(b=>{b.rot+=dt*14;b.x+=b.vx*dt;b.y+=b.vy*dt;b.t-=dt;for(const e of S.enemies)if(e.hp>0&&Math.hypot(e.x-b.x,e.y-b.y)<e.r+4){hitE(e,b.dmg);if(b.kind!='bullet')S.fx.push({txt:b.kind=='padlock'?'CLUNK!':b.kind=='shoe'?'THWAP!':'SHNK!',x:e.x,y:e.y-10,t:.6,c:'#ffd84a'});return false}
       for(const w of S.walls)if(b.x>w.x&&b.x<w.x+w.w&&b.y>w.y&&b.y<w.y+w.h)return false;return b.t>0});
+    S.noKO+=S.enemies.length?dt:0;if(S.lockFlash>0)S.lockFlash-=dt;S.flowT-=dt;if(S.flowT<=0){S.flowT=CONFIG.hunt.flowEvery;buildFlow();}
+    if(S.t>=S.f.waveTime){const L=CONFIG.lockdown;S.lockT-=dt;if(S.lock<L.maxLevel&&S.lockT<=0){S.lock++;S.lockT=L.escalateEvery;S.f.spawnEvery*=L.spawnMul;S.f.maxTweakers=(S.f.maxTweakers||4)+L.extraTweakers;S.f.maxAlive=(S.f.maxAlive||10)+L.extraAlive;S.spawnT=0;S.lockFlash=2.6;S.shake=Math.max(S.shake||0,.25);S.fx.push({txt:S.lock==1?'LOCKDOWN! Hit your quota!':'LOCKDOWN LVL '+S.lock+'!',x:S.p.x,y:S.p.y-40,t:2.2,c:'#ff5252'});}}
     S.bubbleCd-=dt;S.spawnT-=dt;if(S.spawnT<=0){spawn();S.spawnT=S.f.spawnEvery;}
     for(const e of S.enemies){const c=CONFIG.enemies[e.type],dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1;e.wob+=dt*10;
       let sp=c.speed*e.sm;if(e.type=='tweaker'){sp*=.55+.45*Math.abs(Math.sin(e.wob*(e.v=='runner'?.9:.45)));// lurching gait
         e.x+=rnd(-1,1)*(e.v=='runner'?60:25)*dt;e.y+=rnd(-1,1)*(e.v=='runner'?60:25)*dt;// twitchy jitter
         if(e.say){e.sayT-=dt;if(e.sayT<=0)e.say='';}else if(e.talker&&S.bubbleCd<=0&&!S.enemies.some(q=>q.say)&&Math.hypot(p.x-e.x,p.y-e.y)<320){const B=CONFIG.bubbles;e.say=pickQuote();e.sayT=B.show;S.bubbleCd=B.show+rnd(B.cooldownMin,B.cooldownMax);S.bubbles=(S.bubbles||[]);S.bubbles.push(e.say);}}
       if(e.type=='roach'){e.x+=Math.cos(e.wob)*40*dt*(dy/d);e.y-=Math.cos(e.wob)*40*dt*(dx/d);}
-      if(e.stag>0){e.stag-=dt;sp*=.35}e.x+=(dx/d*sp+e.kb.x)*dt;e.y+=(dy/d*sp+e.kb.y)*dt;e.kb.x*=.85;e.kb.y*=.85;e.hit-=dt;collide(e,e.r);
-      if(d<e.r+P.radius&&p.hurt<=0&&e.type=='tweaker'&&window.FIGHT&&FIGHT.grab(e,S))continue;if(d<e.r+P.radius&&p.hurt<=0){const dm=Math.round(c.dmg*e.dm*(S.f.dmgMul||1));S.hp-=dm;p.hurt=.6;S.shake=Math.max(S.shake||0,.12);S.fx.push({txt:'-'+dm,x:p.x,y:p.y-20,t:.8,c:'#ff5555'});}}
-    S.enemies=S.enemies.filter(e=>{if(e.hp<=0){const c=CONFIG.enemies[e.type];S.score+=c.score;S.fx.push({poof:1,x:e.x,y:e.y,t:.55,r:e.r});S.fx.push({txt:e.type=='tweaker'?'BONK!':'+'+c.score,x:e.x,y:e.y,t:.8,c:'#fff'});
+      const H=CONFIG.hunt;if(e.type!='tweaker'&&d<H.chaseRadius)sp*=H.chaseBoost;sp*=1+Math.min(H.kiteMax,Math.max(0,S.noKO-H.kiteTime)*H.kiteRamp);const [ux,uy]=steer(e,dx,dy,d);
+      if(e.stag>0){e.stag-=dt;sp*=.35}e.x+=(ux*sp+e.kb.x)*dt;e.y+=(uy*sp+e.kb.y)*dt;e.kb.x*=.85;e.kb.y*=.85;e.hit-=dt;collide(e,e.r);
+      if(d<e.r+P.radius&&p.hurt<=0&&e.type=='tweaker'&&window.FIGHT&&FIGHT.grab(e,S))continue;if(d<e.r+P.radius&&p.hurt<=0){const dm=Math.round(c.dmg*e.dm*(S.f.dmgMul||1));S.hp-=dm;p.hurt=CONFIG.player.hurtInvuln;S.shake=Math.max(S.shake||0,.12);S.fx.push({txt:'-'+dm,x:p.x,y:p.y-20,t:.8,c:'#ff5555'});}}
+    S.enemies=S.enemies.filter(e=>{if(e.hp<=0){const c=CONFIG.enemies[e.type];S.ko+=CONFIG.objectives.koWorth[e.type]||1;S.noKO=0;S.score+=c.score;S.fx.push({poof:1,x:e.x,y:e.y,t:.55,r:e.r});S.fx.push({txt:e.type=='tweaker'?'BONK!':'+'+c.score,x:e.x,y:e.y,t:.8,c:'#fff'});
       if(Math.random()<.08)S.pickups.push({type:'cash',x:e.x,y:e.y,v:10});return false}return true});
     S.pickups=S.pickups.filter(k=>{if(Math.hypot(k.x-p.x,k.y-p.y)<24){if(k.type=='cash'){S.cash+=k.v;S.score+=k.v;S.fx.push({txt:'+$'+k.v,x:k.x,y:k.y,t:1,c:'#6f6'},{coin:1,x0:k.x,y0:k.y,x:k.x,y:k.y,t:.7,n:Math.min(6,1+Math.floor(k.v/25))})}
       else if(k.type=='health'){S.hp=Math.min(S.maxHp,S.hp+k.v);S.fx.push({txt:'+HP',x:k.x,y:k.y,t:1,c:'#f6a'})}
@@ -149,7 +164,7 @@ const StorageSurvival=(function(){
       else if(k.type=='gun'){S.ammo=Math.min(CONFIG.gun.maxAmmo,S.ammo+k.v);S.fx.push({txt:'NAIL GUN +'+k.v,x:k.x,y:k.y,t:1,c:'#fc6'})}
       else{S.supplies+=3;S.fx.push({txt:'BUG SPRAY x3',x:k.x,y:k.y,t:1,c:'#6cf'})}return false}return true});
     S.shake=Math.max(0,(S.shake||0)-dt);for(const f of S.fx){f.t-=dt;if(f.spark){f.x+=f.vx*dt;f.y+=f.vy*dt;f.vx*=.92;f.vy*=.92}else f.y-=20*dt}S.fx=S.fx.filter(f=>f.t>0);
-    if(S.hp<=0){S.hp=0;S.state='dead';}else if(S.t>=S.f.waveTime){if(window.FIGHT&&FIGHT.bossGate(S))return;S.state='clear';S.score+=500*(S.fi+1);}}
+    if(S.hp<=0){S.hp=0;S.state='dead';}else if(S.ko>=S.quota.ko&&S.uo>=S.quota.units){if(window.FIGHT&&FIGHT.bossGate(S))return;S.state='clear';S.score+=500*(S.fi+1);}}
   function next(){S.fi++;S.hp=Math.min(S.maxHp,S.hp+25);startFacility();}
   return {CONFIG,newGame,update,next,get state(){return S}};
 })();
@@ -397,9 +412,12 @@ function drawHUD(s){RS.hpD+=(s.hp-RS.hpD)*Math.min(1,DT*12);if(RS.hpLag>RS.hpD)R
   const cp=1+RS.cashPulse*.35;ctx.save();ctx.translate(24,52);ctx.scale(cp,cp);coin(0,0,7);ctx.restore();txt('$'+s.cash,38,57,16*(1+RS.cashPulse*.15),'#7dff8a','left');
   txt(s.score+'',VW/2+12,30,17,'#fff');ctx.fillStyle='#ffd84a';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.fillText('SCORE',VW/2+12,16);
   const rem=Math.max(0,s.f.waveTime-s.t),tx=VW/2-22,ty=52;ctx.fillStyle='rgba(255,255,255,.15)';ctx.beginPath();ctx.arc(tx,ty,8,0,7);ctx.fill();ctx.fillStyle=rem<10?'#ff6b6b':'#ffd84a';ctx.beginPath();ctx.moveTo(tx,ty);ctx.arc(tx,ty,8,-Math.PI/2,-Math.PI/2+Math.PI*2*(rem/s.f.waveTime));ctx.fill();
-  txt('WAVE '+(s.fi+1)+' • '+Math.ceil(rem)+'s',tx+14,57,13,'#ffd84a','left');
+  txt(s.lock?'WAVE '+(s.fi+1)+' • LOCKDOWN':'WAVE '+(s.fi+1)+' • '+Math.ceil(rem)+'s',tx+14,57,13,s.lock&&Math.floor(NOW/300)%2?'#ff5252':'#ffd84a','left');
+  {const q=s.quota,kd=s.ko>=q.ko,ud=s.uo>=q.units,lb='KO '+Math.floor(Math.min(s.ko,q.ko))+'/'+q.ko+'   UNITS '+Math.min(s.uo,q.units)+'/'+q.units+(s.noKO>CONFIG.hunt.kiteTime?'   HUNTED!':'');ctx.font='800 12px system-ui';const w=ctx.measureText(lb).width+24;ctx.fillStyle=s.lock?'rgba(120,10,10,.85)':'rgba(10,12,20,.78)';ctx.beginPath();ctx.roundRect(VW/2-w/2,74,w,22,11);ctx.fill();
+   txt('KO '+Math.floor(Math.min(s.ko,q.ko))+'/'+q.ko,VW/2-w/2+12,89,12,kd?'#7dff8a':'#fff','left');ctx.font='800 12px system-ui';const k1=ctx.measureText('KO '+Math.floor(Math.min(s.ko,q.ko))+'/'+q.ko+'   ').width;txt('UNITS '+Math.min(s.uo,q.units)+'/'+q.units,VW/2-w/2+12+k1,89,12,ud?'#7dff8a':'#fff','left');if(s.noKO>CONFIG.hunt.kiteTime){const k2=ctx.measureText('UNITS '+Math.min(s.uo,q.units)+'/'+q.units+'   ').width;txt('HUNTED!',VW/2-w/2+12+k1+k2,89,12,'#ff7070','left');}
+   if(s.lockFlash>0){const a=Math.min(1,s.lockFlash*2),sc=1+Math.max(0,s.lockFlash-2.2)*1.5;ctx.save();ctx.globalAlpha=a;ctx.fillStyle='rgba(150,0,0,.75)';ctx.fillRect(0,VH*.3-34,VW,74);ctx.translate(VW/2,VH*.3);ctx.scale(sc,sc);txt(s.lock==1?'LOCKDOWN!':'LOCKDOWN LVL '+s.lock+'!',0,6,34,'#fff');ctx.restore();ctx.save();ctx.globalAlpha=a;txt('Time is up. More tweakers! Hit your quota to escape.',VW/2,VH*.3+28,12,'#ffd84a');ctx.restore();}}
   const rx=VW-18;ctx.fillStyle='#3af';ctx.beginPath();ctx.roundRect(rx-58,15,9,15,2);ctx.fill();ctx.fillStyle='#fff';ctx.fillRect(rx-56.5,12,6,4);txt('×'+s.supplies,rx-44,28,13,'#9de2ff','left');
-  ctx.font='bold 9px system-ui';ctx.textAlign='right';ctx.fillStyle='#bbb';const nm=s.f.name.length>24?s.f.name.slice(0,23)+'…':s.f.name;ctx.fillText(nm,rx,55);
+  ctx.font='bold 9px system-ui';ctx.textAlign='right';ctx.fillStyle='#bbb';const nm=s.lock?'':s.f.name.length>24?s.f.name.slice(0,23)+'…':s.f.name;ctx.fillText(nm,rx,55);
   // weapon / throwable chips
   ctx.font='900 12px system-ui';const mn=CONFIG.melee[s.melee].name,mw=ctx.measureText(mn).width+44;chip(8,76,mw,24);ctx.save();ctx.translate(22,88);ctx.rotate(-.6);ctx.fillStyle=CONFIG.melee[s.melee].color;ctx.fillRect(-9,-2,18,4);ctx.restore();txt(mn,34,92.5,12,'#fff','left');
   const tt=s.throwType?CONFIG.throwables[s.throwType].name+' ×'+s.inv[s.throwType]:'No throwables — open units!';ctx.font='900 12px system-ui';const tw=ctx.measureText(tt).width+(s.throwType?44:22);chip(VW-8-tw,76,tw,24);
