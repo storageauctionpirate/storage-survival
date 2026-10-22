@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<link rel="icon" href="data:,"><title>Storage Survival: The Tweaker Apocalypse</title>
+<link rel="icon" href="data:,"><title>Storage Survival: Night Crawlers</title>
 <style>html,body{margin:0;height:100%;height:100dvh;background:#111;overflow:hidden;touch-action:none;font-family:system-ui,sans-serif}canvas{display:block;width:100vw;height:100vh;height:100dvh}#sa{position:fixed;left:0;bottom:0;width:1px;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden}</style>
 </head><body><canvas id="c"></canvas><div id="sa"></div><div id="err" style="display:none"></div>
 <script>
@@ -280,7 +280,7 @@ function buildFloor(s){const T=CONFIG.tile,sc=Math.min(2,DPR),c=document.createE
     g.fillStyle=fg;g.textAlign='center';g.font='900 '+(t2?10:9)+'px system-ui,sans-serif';g.fillText(t1,x+w/2,y+(t2?13:h/2+3));if(t2){g.font='bold 8px system-ui,sans-serif';g.fillText(t2,x+w/2,y+24);}}
   sign(s.W/2-95,22,190,30,th.accent,'#fff',s.f.name.toUpperCase(),'24HR ACCESS • GATE CODE REQUIRED');
   sign(18,22,70,20,'#c0392b','#fff','NO LOITERING');sign(s.W-90,22,72,20,'#e1b12c','#222','OFFICE →');
-  sign(18,s.H-40,84,20,'#2c9a58','#fff','AUCTION FRIDAY');sign(s.W-100,s.H-40,82,20,'#c0392b','#fff','5 MPH • NO TWEAKING');
+  sign(18,s.H-40,84,20,'#2c9a58','#fff','AUCTION FRIDAY');sign(s.W-100,s.H-40,82,20,'#c0392b','#fff','5 MPH • NO LOITERING');
   return c;}
 function buildLamps(s){const T=CONFIG.tile,L=[];let i=0;for(const ry of [1,6,11,16,20])for(const cx of [1,7.5,13.5]){L.push({x:cx*T,y:ry*T+(ry==20?0:T*.5),seed:sd(++i+s.fi*31),bad:sd(i*3.7+s.fi)<s.th.badLamps,keep:sd(i*5.1+s.fi*7)<s.th.lampKeep});}return L.filter(l=>l.keep);}
 function lampLevel(l){const t=NOW/1000;let v=.85+.08*Math.sin(t*2.3+l.seed*9);if(l.bad){const n=sd(Math.floor(t*14)+l.seed*1000);if(n<.18)v*=.15;else if(n<.3)v*=.6;}return v;}
@@ -469,7 +469,7 @@ function drawHUD(s){RS.hpD+=(s.hp-RS.hpD)*Math.min(1,DT*12);if(RS.hpLag>RS.hpD)R
   txt(s.lock?'W'+(s.fi+1)+' '+CONFIG.lockdown.names[s.lock-1]:'W'+(s.fi+1)+' GATE CLOSES IN '+Math.floor(Math.ceil(rem)/60)+':'+String(Math.ceil(rem)%60).padStart(2,'0'),tx+14,57,12,s.lock&&Math.floor(NOW/300)%2?'#ff5252':'#ffd84a','left');
   {const q=s.quota,kd=s.ko>=q.ko,ud=s.uo>=q.units,lb='KO '+Math.floor(Math.min(s.ko,q.ko))+'/'+q.ko+'   UNITS '+Math.min(s.uo,q.units)+'/'+q.units+(s.noKO>CONFIG.hunt.kiteTime?'   HUNTED!':'');ctx.font='800 12px system-ui';const w=ctx.measureText(lb).width+24;ctx.fillStyle=s.lock?'rgba(120,10,10,.85)':'rgba(10,12,20,.78)';ctx.beginPath();ctx.roundRect(VW/2-w/2,74,w,22,11);ctx.fill();
    txt('KO '+Math.floor(Math.min(s.ko,q.ko))+'/'+q.ko,VW/2-w/2+12,89,12,kd?'#7dff8a':'#fff','left');ctx.font='800 12px system-ui';const k1=ctx.measureText('KO '+Math.floor(Math.min(s.ko,q.ko))+'/'+q.ko+'   ').width;txt('UNITS '+Math.min(s.uo,q.units)+'/'+q.units,VW/2-w/2+12+k1,89,12,ud?'#7dff8a':'#fff','left');if(s.noKO>CONFIG.hunt.kiteTime){const k2=ctx.measureText('UNITS '+Math.min(s.uo,q.units)+'/'+q.units+'   ').width;txt('HUNTED!',VW/2-w/2+12+k1+k2,89,12,'#ff7070','left');}
-   if(s.lockFlash>0){const a=Math.min(1,s.lockFlash*2),sc=1+Math.max(0,s.lockFlash-2.2)*1.5;ctx.save();ctx.globalAlpha=a;ctx.fillStyle='rgba(150,0,0,.75)';ctx.fillRect(0,VH*.3-34,VW,74);ctx.translate(VW/2,VH*.3);ctx.scale(sc,sc);txt(CONFIG.lockdown.names[s.lock-1],0,6,34,'#fff');ctx.restore();ctx.save();ctx.globalAlpha=a;txt(s.lock==1?'Locked in with the tweakers! Hit your quota to get out.':s.lock==2?'The lights are dimming. More of them keep coming...':'The night crew is here. Get out NOW!',VW/2,VH*.3+28,12,'#ffd84a');ctx.restore();}}
+   if(s.lockFlash>0){const a=Math.min(1,s.lockFlash*2),sc=1+Math.max(0,s.lockFlash-2.2)*1.5;ctx.save();ctx.globalAlpha=a;ctx.fillStyle='rgba(150,0,0,.75)';ctx.fillRect(0,VH*.3-34,VW,74);ctx.translate(VW/2,VH*.3);ctx.scale(sc,sc);txt(CONFIG.lockdown.names[s.lock-1],0,6,34,'#fff');ctx.restore();ctx.save();ctx.globalAlpha=a;txt(s.lock==1?'Locked in with the Night Crawlers! Hit your quota to get out.':s.lock==2?'The lights are dimming. More of them keep coming...':'The night crew is here. Get out NOW!',VW/2,VH*.3+28,12,'#ffd84a');ctx.restore();}}
   const rx=VW-18;ctx.fillStyle='#3af';ctx.beginPath();ctx.roundRect(rx-58,15,9,15,2);ctx.fill();ctx.fillStyle='#fff';ctx.fillRect(rx-56.5,12,6,4);txt('×'+s.supplies,rx-44,28,13,'#9de2ff','left');
   ctx.font='bold 9px system-ui';ctx.textAlign='right';ctx.fillStyle='#bbb';const nm='';if(0)s.f.name.length>24?s.f.name.slice(0,23)+'…':s.f.name;ctx.fillText(nm,rx,55);
   // weapon / throwable chips
@@ -489,11 +489,11 @@ const LC=document.createElement('canvas'),lg=LC.getContext('2d'),LS=.5;
 function overlay(){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,VW,VH)}
 function drawTitle(){const t=performance.now()/1000;ctx.fillStyle='#14141a';ctx.fillRect(0,0,VW,VH);
   for(let i=0;i<6;i++){const x=(i+.5)*VW/6;ctx.fillStyle='#c0392b';ctx.fillRect(x-24,VH*.62,48,60);ctx.strokeStyle='#922';for(let j=4;j<60;j+=6){ctx.beginPath();ctx.moveTo(x-24,VH*.62+j);ctx.lineTo(x+24,VH*.62+j);ctx.stroke()}}
-  txt('STORAGE',VW/2,VH*.22,46,'#ffd84a');txt('SURVIVAL',VW/2,VH*.22+50,46,'#ffd84a');txt('The Tweaker Apocalypse',VW/2,VH*.22+90,22,'#7fbf4d');
-  txt('by Storage Auction Pirate',VW/2,VH*.22+122,15,'#ccc');txt('🧟 The tweaker zombies want YOUR unit!',VW/2,VH*.22+160,Math.min(16,VW/24),'#fff');txt('Bonk the horde. Grab the loot. Survive.',VW/2,VH*.22+184,Math.min(14,VW/27),'#ccc');txt('🏴‍☠️',VW/2,VH*.5,40);
+  txt('STORAGE',VW/2,VH*.22,46,'#ffd84a');txt('SURVIVAL',VW/2,VH*.22+50,46,'#ffd84a');txt('Attack of the Night Crawlers',VW/2,VH*.22+90,22,'#7fbf4d');
+  txt('by Storage Auction Pirate',VW/2,VH*.22+122,15,'#ccc');txt('🧟 The Night Crawlers want YOUR unit!',VW/2,VH*.22+160,Math.min(16,VW/24),'#fff');txt('Bonk the horde. Grab the loot. Survive.',VW/2,VH*.22+184,Math.min(14,VW/27),'#ccc');txt('🏴‍☠️',VW/2,VH*.5,40);
   if(Math.floor(t*2)%2)txt('TAP TO START',VW/2,VH*.85,22);}
 function drawHow(){ctx.fillStyle='#14141a';ctx.fillRect(0,0,VW,VH);txt('HOW TO PLAY',VW/2,80,30,'#ffd84a');
-  const L=['🧟 TWEAKER ZOMBIES are the horde!','   Shamblers lurch, runners twitch fast,','   tanks soak hits. They want your junk!','🕹️ Drag LEFT side to move (WASD/arrows)','🔴 SWING to bonk (Space). Start: flashlight','🚪 Swing at red roll-up doors for LOOT','🔒 THROW padlocks, shoes, knives (E/K)','   Out of throwables? Open more units!','⛏️ Shovels & more = longer reach','🔫 Rare nail gun: SHOOT (F/J)','🧴 Bug spray = area blast on swings','🐀🪳 Rats & roaches: few early, more later','⏱️ Survive the timer to clear the facility','   Each facility gets harder!'];
+  const L=['🧟 NIGHT CRAWLERS are the horde!','   Shamblers lurch, runners twitch fast,','   tanks soak hits. They want your junk!','🕹️ Drag LEFT side to move (WASD/arrows)','🔴 SWING to bonk (Space). Start: flashlight','🚪 Swing at red roll-up doors for LOOT','🔒 THROW padlocks, shoes, knives (E/K)','   Out of throwables? Open more units!','⛏️ Shovels & more = longer reach','🔫 Rare nail gun: SHOOT (F/J)','🧴 Bug spray = area blast on swings','🐀🪳 Rats & roaches: few early, more later','⏱️ Survive the timer to clear the facility','   Each facility gets harder!'];
   L.forEach((l,i)=>txt(l,VW/2,115+i*29,Math.min(15,VW/26),'#fff'));txt('TAP TO PLAY',VW/2,VH-LIFT-16,22,'#7fbf4d');}
 // ===== v5 FIGHT MODE: 1-on-1 side-view scrap when a tweaker grabs you =====
 const FC=StorageSurvival.CONFIG.fight;
@@ -503,7 +503,7 @@ const FIGHT=(()=>{let X=ctx;let F=null,cd=0;const P=FC.player;
   function start(kind,e,S){const B=kind=='tweaker'?null:FC.bosses[kind];const v=e&&e.v||'shambler';
     const hp=B?B.hp:Math.round(FC.tweaker.hp*(FC.tweaker.variantHp[v]||1));
     F={kind,boss:!!B,e,S,t:0,max:B?FC.bossTime:FC.time,php:P.hp,pmax:P.hp,ehp:hp,emax:hp,px:.3,ex:.7,pAct:null,pT:0,eAct:null,eT:R(.6,1),block:0,meter:0,proj:[],fx:[],shake:0,done:null,doneT:0,fin:null,
-      name:B?B.name:(v=='tank'?'Big Tweaker':v=='runner'?'Twitchy Tweaker':'Tweaker'),hood:e&&e.hood||'#6a5a8a',say:'',sayT:0,intro:1.1,dash:0,ey:0};
+      name:B?B.name:(v=='tank'?'Big Crawler':v=='runner'?'Twitchy Crawler':'Night Crawler'),hood:e&&e.hood||'#6a5a8a',say:'',sayT:0,intro:1.1,dash:0,ey:0};
     const q=B?B.taunts:FC.tweaker.taunts;if(B||Math.random()<FC.tweaker.tauntChance){F.say=q[Math.floor(Math.random()*q.length)];F.sayT=2;}
     joy={id:null,x:0,y:0};atkTouch=shTouch=thTouch=false;for(const k in keys)keys[k]=false;}
   function grab(e,S){if(F||cd>0||S.state!='play')return false;if(Math.random()>FC.grabChance){cd=FC.grabRetry;return false}start('tweaker',e,S);return true;}
